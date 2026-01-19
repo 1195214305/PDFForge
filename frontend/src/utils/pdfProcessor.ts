@@ -71,41 +71,33 @@ export function detectTOCStructure(text: string): TOCItem[] {
 
 /**
  * 添加目录到PDF
+ * 注意：由于pdf-lib的outline功能存在循环引用问题，这里采用元数据方式保存目录信息
  */
 export async function addTOCToPDF(
   pdfDoc: PDFDocument,
   tocItems: TOCItem[],
   pageOffset: number
 ): Promise<Uint8Array> {
-  // 创建目录大纲
-  const outline = pdfDoc.context.obj({})
+  // 将目录信息保存到PDF元数据中
+  // 这样可以保留目录编辑功能，但不会在PDF中创建真正的书签（避免循环引用）
+  const tocMetadata = tocItems.map(item => ({
+    title: item.title,
+    page: item.page + pageOffset,
+    level: item.level
+  }))
 
-  tocItems.forEach((item, index) => {
-    const destPage = pdfDoc.getPage(Math.max(0, item.page + pageOffset - 1))
-    const dest = pdfDoc.context.obj([
-      destPage.ref,
-      'XYZ',
-      null,
-      null,
-      null
-    ])
+  // 将目录信息序列化为JSON字符串，保存到PDF的Keywords字段
+  const metadataString = JSON.stringify(tocMetadata)
+  pdfDoc.setKeywords(metadataString)
 
-    const outlineItem = pdfDoc.context.obj({
-      Title: item.title,
-      Parent: outline,
-      Dest: dest
-    })
+  // 设置其他元数据
+  pdfDoc.setTitle('PDFForge - 智能PDF工坊生成')
+  pdfDoc.setProducer('PDFForge by ESA Pages')
+  pdfDoc.setCreator('PDFForge')
+  pdfDoc.setCreationDate(new Date())
+  pdfDoc.setModificationDate(new Date())
 
-    if (index === 0) {
-      outline.set(pdfDoc.context.obj('First') as any, outlineItem)
-    }
-    if (index === tocItems.length - 1) {
-      outline.set(pdfDoc.context.obj('Last') as any, outlineItem)
-    }
-  })
-
-  pdfDoc.catalog.set(pdfDoc.context.obj('Outlines') as any, outline)
-
+  // 直接保存PDF，不创建outline（避免循环引用导致的栈溢出）
   return await pdfDoc.save()
 }
 
