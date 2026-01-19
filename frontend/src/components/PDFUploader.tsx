@@ -3,7 +3,11 @@ import { Upload, FileText, Loader2, Sparkles } from 'lucide-react'
 import { usePDFStore } from '../store/pdfStore'
 import { loadPDFDocument, extractPDFText, detectTOCStructure } from '../utils/pdfProcessor'
 
-export default function PDFUploader() {
+interface PDFUploaderProps {
+  onUploadSuccess?: () => void
+}
+
+export default function PDFUploader({ onUploadSuccess }: PDFUploaderProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isExtracting, setIsExtracting] = useState(false)
   const [dragActive, setDragActive] = useState(false)
@@ -29,6 +33,11 @@ export default function PDFUploader() {
       setTocItems(detectedTOC)
 
       alert(`PDF加载成功！共 ${pdfDoc.getPageCount()} 页，自动识别 ${detectedTOC.length} 个目录项`)
+
+      // 上传成功后自动跳转到编辑目录页面
+      if (onUploadSuccess) {
+        onUploadSuccess()
+      }
     } catch (error) {
       console.error('PDF加载失败:', error)
       alert('PDF加载失败，请检查文件是否损坏')

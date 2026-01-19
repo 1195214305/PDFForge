@@ -9,6 +9,11 @@ function App() {
   const [activeTab, setActiveTab] = useState<'upload' | 'edit' | 'settings'>('upload')
   const { pdfFile } = usePDFStore()
 
+  // 自动跳转到编辑目录页面
+  const handleUploadSuccess = () => {
+    setActiveTab('edit')
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-forge-50 via-stone-50 to-forge-100">
       {/* 顶部导航 */}
@@ -34,8 +39,11 @@ function App() {
                     : 'text-forge-700 hover:bg-forge-100'
                 }`}
               >
-                <FileUp className="w-4 h-4 inline-block mr-2" />
-                上传文件
+                <span className="inline-flex items-center">
+                  <span className="w-5 h-5 rounded-full bg-forge-700 text-white text-xs flex items-center justify-center mr-2">1</span>
+                  <FileUp className="w-4 h-4 inline-block mr-2" />
+                  上传文件
+                </span>
               </button>
               <button
                 onClick={() => setActiveTab('edit')}
@@ -46,8 +54,11 @@ function App() {
                     : 'text-forge-700 hover:bg-forge-100 disabled:opacity-50 disabled:cursor-not-allowed'
                 }`}
               >
-                <BookOpen className="w-4 h-4 inline-block mr-2" />
-                编辑目录
+                <span className="inline-flex items-center">
+                  <span className={`w-5 h-5 rounded-full text-white text-xs flex items-center justify-center mr-2 ${pdfFile ? 'bg-forge-700' : 'bg-gray-400'}`}>2</span>
+                  <BookOpen className="w-4 h-4 inline-block mr-2" />
+                  编辑目录
+                </span>
               </button>
               <button
                 onClick={() => setActiveTab('settings')}
@@ -57,8 +68,11 @@ function App() {
                     : 'text-forge-700 hover:bg-forge-100'
                 }`}
               >
-                <Settings className="w-4 h-4 inline-block mr-2" />
-                设置
+                <span className="inline-flex items-center">
+                  <span className="w-5 h-5 rounded-full bg-forge-700 text-white text-xs flex items-center justify-center mr-2">3</span>
+                  <Settings className="w-4 h-4 inline-block mr-2" />
+                  设置
+                </span>
               </button>
             </nav>
           </div>
@@ -67,7 +81,7 @@ function App() {
 
       {/* 主内容区 */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {activeTab === 'upload' && <PDFUploader />}
+        {activeTab === 'upload' && <PDFUploader onUploadSuccess={handleUploadSuccess} />}
         {activeTab === 'edit' && <TOCEditor />}
         {activeTab === 'settings' && <SettingsPanel />}
       </main>
