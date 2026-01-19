@@ -1,4 +1,4 @@
-import { PDFDocument, rgb } from 'pdf-lib'
+import { PDFDocument, rgb, degrees } from 'pdf-lib'
 import { TOCItem } from '../store/pdfStore'
 
 /**
@@ -97,14 +97,14 @@ export async function addTOCToPDF(
     })
 
     if (index === 0) {
-      outline.set('First', outlineItem)
+      outline.set(pdfDoc.context.obj('First') as any, outlineItem)
     }
     if (index === tocItems.length - 1) {
-      outline.set('Last', outlineItem)
+      outline.set(pdfDoc.context.obj('Last') as any, outlineItem)
     }
   })
 
-  pdfDoc.catalog.set('Outlines', outline)
+  pdfDoc.catalog.set(pdfDoc.context.obj('Outlines') as any, outline)
 
   return await pdfDoc.save()
 }
@@ -162,7 +162,7 @@ export async function addWatermark(
       size: 50,
       color: rgb(0.8, 0.8, 0.8),
       opacity: 0.3,
-      rotate: { angle: 45, type: 'degrees' }
+      rotate: degrees(45)
     })
   })
 
@@ -173,7 +173,7 @@ export async function addWatermark(
  * 下载PDF文件
  */
 export function downloadPDF(pdfBytes: Uint8Array, filename: string) {
-  const blob = new Blob([pdfBytes], { type: 'application/pdf' })
+  const blob = new Blob([pdfBytes as any], { type: 'application/pdf' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
