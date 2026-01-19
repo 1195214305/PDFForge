@@ -86,9 +86,9 @@ export async function addTOCToPDF(
     level: item.level
   }))
 
-  // 将目录信息序列化为JSON字符串，保存到PDF的Keywords字段
-  const metadataString = JSON.stringify(tocMetadata)
-  pdfDoc.setKeywords(metadataString)
+  // 将目录信息保存到PDF的Keywords字段（使用数组格式）
+  const keywords = tocMetadata.map(item => `${item.title}:${item.page}`)
+  pdfDoc.setKeywords(keywords)
 
   // 设置其他元数据
   pdfDoc.setTitle('PDFForge - 智能PDF工坊生成')

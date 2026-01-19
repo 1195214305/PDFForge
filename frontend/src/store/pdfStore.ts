@@ -8,12 +8,24 @@ export interface TOCItem {
   level: 1 | 2 | 3
 }
 
+export interface PDFSummary {
+  overview: string
+  background: string
+  methods: string
+  results: string
+  conclusion: string
+  keyPoints: string[]
+  posterUrl?: string
+}
+
 interface PDFState {
   pdfFile: File | null
   pdfDoc: PDFDocument | null
   tocItems: TOCItem[]
   pageOffset: number
   qianwenApiKey: string
+  pdfSummary: PDFSummary | null
+  isGeneratingSummary: boolean
 
   setPdfFile: (file: File | null) => void
   setPdfDoc: (doc: PDFDocument | null) => void
@@ -24,6 +36,8 @@ interface PDFState {
   reorderTocItems: (items: TOCItem[]) => void
   setPageOffset: (offset: number) => void
   setQianwenApiKey: (key: string) => void
+  setPdfSummary: (summary: PDFSummary | null) => void
+  setIsGeneratingSummary: (isGenerating: boolean) => void
   reset: () => void
 }
 
@@ -33,6 +47,8 @@ export const usePDFStore = create<PDFState>((set) => ({
   tocItems: [],
   pageOffset: 0,
   qianwenApiKey: localStorage.getItem('qianwen_api_key') || '',
+  pdfSummary: null,
+  isGeneratingSummary: false,
 
   setPdfFile: (file) => set({ pdfFile: file }),
 
@@ -63,10 +79,16 @@ export const usePDFStore = create<PDFState>((set) => ({
     set({ qianwenApiKey: key })
   },
 
+  setPdfSummary: (summary) => set({ pdfSummary: summary }),
+
+  setIsGeneratingSummary: (isGenerating) => set({ isGeneratingSummary: isGenerating }),
+
   reset: () => set({
     pdfFile: null,
     pdfDoc: null,
     tocItems: [],
-    pageOffset: 0
+    pageOffset: 0,
+    pdfSummary: null,
+    isGeneratingSummary: false
   })
 }))
