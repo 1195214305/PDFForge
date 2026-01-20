@@ -1,4 +1,6 @@
 import { PDFDocument, rgb, degrees } from 'pdf-lib'
+import * as pdfLib from 'pdf-lib'
+import { outlinePdfFactory } from '@lillallol/outline-pdf'
 import { TOCItem } from '../store/pdfStore'
 
 /**
@@ -71,7 +73,7 @@ export function detectTOCStructure(text: string): TOCItem[] {
 
 /**
  * 添加目录到PDF
- * 使用pdf-lib的底层API手动构建Outline对象树，避免循环引用问题
+ * 使用 outline-pdf 库实现可靠的书签功能
  */
 export async function addTOCToPDF(
   pdfDoc: PDFDocument,
@@ -88,112 +90,62 @@ export async function addTOCToPDF(
 
     // 如果没有目录项，直接保存
     if (!tocItems || tocItems.length === 0) {
+      console.log('没有目录项，直接保存PDF')
       return await pdfDoc.save()
     }
 
-    // 获取PDF上下文
-    const context = pdfDoc.context
+    console.log(`开始添加 ${tocItems.length} 个书签...`)
 
-    // 创建根Outlines对象
-    const outlinesRef = context.nextRef()
-    const outlines = context.obj({
-      Type: 'Outlines',
-      Count: 0
+    // 初始化 outline-pdf
+    const outlinePdf = outlinePdfFactory(pdfLib)
+
+    // 将 TOCItem 转换为 outline-pdf 格式
+    // 格式：页码|层级标记|标题
+    // 层级标记：一级为空，二级为"-"，三级为"--"
+    const outlineString = tocItems
+      .map(item => {
+        const pageNum = item.page + pageOffset
+
+        // 确保页码有效
+        if (pageNum < 1 || pageNum > pdfDoc.getPageCount()) {
+          console.warn(`跳过无效页码: ${pageNum} (原始: ${item.page}, 偏移: ${pageOffset})`)
+          return null
+        }
+
+        // 根据层级生成标记
+        let levelMarker = ''
+        if (item.level === 2) {
+          levelMarker = '-'
+        } else if (item.level === 3) {
+          levelMarker = '--'
+        }
+
+        // 格式：页码|层级标记|标题
+        return `${pageNum}|${levelMarker}|${item.title}`
+      })
+      .filter(line => line !== null)
+      .join('\n')
+
+    console.log('书签结构预览:')
+    console.log(outlineString.split('\n').slice(0, 5).join('\n'))
+    console.log(`... (共 ${outlineString.split('\n').length} 个书签)`)
+
+    // 使用 outline-pdf 添加书签
+    const pdfWithOutline = await outlinePdf({
+      outline: outlineString,
+      pdf: pdfDoc
     })
 
-    // 构建书签树
-    const bookmarkRefs: any[] = []
-    const parentStack: any[] = []
-    let totalCount = 0
-
-    for (let i = 0; i < tocItems.length; i++) {
-      const item = tocItems[i]
-      const pageIndex = item.page + pageOffset - 1
-
-      // 确保页码有效
-      if (pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) {
-        console.warn(`跳过无效页码: ${item.page}`)
-        continue
-      }
-
-      const page = pdfDoc.getPage(pageIndex)
-      const pageRef = page.ref
-
-      // 创建书签引用
-      const bookmarkRef = context.nextRef()
-
-      // 创建目标数组 [page /XYZ left top zoom]
-      const dest = [pageRef, 'XYZ', null, null, null]
-
-      // 创建书签对象
-      const bookmark: any = {
-        Title: item.title,
-        Parent: outlinesRef,
-        Dest: dest
-      }
-
-      // 根据层级设置父子关系
-      if (item.level === 1) {
-        // 一级标题，父节点是根Outlines
-        bookmark.Parent = outlinesRef
-        parentStack[0] = { ref: bookmarkRef, level: 1 }
-        parentStack.length = 1
-      } else if (item.level === 2) {
-        // 二级标题，父节点是最近的一级标题
-        if (parentStack[0]) {
-          bookmark.Parent = parentStack[0].ref
-          parentStack[1] = { ref: bookmarkRef, level: 2 }
-          parentStack.length = 2
-        } else {
-          bookmark.Parent = outlinesRef
-        }
-      } else if (item.level === 3) {
-        // 三级标题，父节点是最近的二级标题
-        if (parentStack[1]) {
-          bookmark.Parent = parentStack[1].ref
-        } else if (parentStack[0]) {
-          bookmark.Parent = parentStack[0].ref
-        } else {
-          bookmark.Parent = outlinesRef
-        }
-      }
-
-      // 设置前后链接
-      if (i > 0 && bookmarkRefs.length > 0) {
-        const prevRef = bookmarkRefs[bookmarkRefs.length - 1]
-        bookmark.Prev = prevRef
-      }
-
-      if (i < tocItems.length - 1) {
-        const nextRef = context.nextRef()
-        bookmark.Next = nextRef
-      }
-
-      // 注册书签对象
-      context.assign(bookmarkRef, context.obj(bookmark))
-      bookmarkRefs.push(bookmarkRef)
-      totalCount++
-    }
-
-    // 更新根Outlines对象
-    if (bookmarkRefs.length > 0) {
-      outlines.set('First', bookmarkRefs[0])
-      outlines.set('Last', bookmarkRefs[bookmarkRefs.length - 1])
-      outlines.set('Count', totalCount)
-
-      // 注册根Outlines对象
-      context.assign(outlinesRef, outlines)
-
-      // 将Outlines添加到Catalog
-      const catalog = pdfDoc.catalog
-      catalog.set('Outlines', outlinesRef)
-    }
+    console.log('✓ 书签添加成功！')
 
     // 保存PDF
-    return await pdfDoc.save()
+    return await pdfWithOutline.save()
   } catch (error) {
     console.error('添加书签失败:', error)
+    console.error('错误详情:', error instanceof Error ? error.message : String(error))
+
     // 如果添加书签失败，至少保存原始PDF
+    console.log('降级处理：保存不带书签的PDF')
     return await pdfDoc.save()
   }
 }
