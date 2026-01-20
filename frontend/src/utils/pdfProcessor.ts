@@ -71,34 +71,131 @@ export function detectTOCStructure(text: string): TOCItem[] {
 
 /**
  * 添加目录到PDF
- * 注意：由于pdf-lib的outline功能存在循环引用问题，这里采用元数据方式保存目录信息
+ * 使用pdf-lib的底层API手动构建Outline对象树，避免循环引用问题
  */
 export async function addTOCToPDF(
   pdfDoc: PDFDocument,
   tocItems: TOCItem[],
   pageOffset: number
 ): Promise<Uint8Array> {
-  // 将目录信息保存到PDF元数据中
-  // 这样可以保留目录编辑功能，但不会在PDF中创建真正的书签（避免循环引用）
-  const tocMetadata = tocItems.map(item => ({
-    title: item.title,
-    page: item.page + pageOffset,
-    level: item.level
-  }))
+  try {
+    // 设置PDF元数据
+    pdfDoc.setTitle('PDFForge - 智能PDF工坊生成')
+    pdfDoc.setProducer('PDFForge by ESA Pages')
+    pdfDoc.setCreator('PDFForge')
+    pdfDoc.setCreationDate(new Date())
+    pdfDoc.setModificationDate(new Date())
 
-  // 将目录信息保存到PDF的Keywords字段（使用数组格式）
-  const keywords = tocMetadata.map(item => `${item.title}:${item.page}`)
-  pdfDoc.setKeywords(keywords)
+    // 如果没有目录项，直接保存
+    if (!tocItems || tocItems.length === 0) {
+      return await pdfDoc.save()
+    }
 
-  // 设置其他元数据
-  pdfDoc.setTitle('PDFForge - 智能PDF工坊生成')
-  pdfDoc.setProducer('PDFForge by ESA Pages')
-  pdfDoc.setCreator('PDFForge')
-  pdfDoc.setCreationDate(new Date())
-  pdfDoc.setModificationDate(new Date())
+    // 获取PDF上下文
+    const context = pdfDoc.context
 
-  // 直接保存PDF，不创建outline（避免循环引用导致的栈溢出）
-  return await pdfDoc.save()
+    // 创建根Outlines对象
+    const outlinesRef = context.nextRef()
+    const outlines = context.obj({
+      Type: 'Outlines',
+      Count: 0
+    })
+
+    // 构建书签树
+    const bookmarkRefs: any[] = []
+    const parentStack: any[] = []
+    let totalCount = 0
+
+    for (let i = 0; i < tocItems.length; i++) {
+      const item = tocItems[i]
+      const pageIndex = item.page + pageOffset - 1
+
+      // 确保页码有效
+      if (pageIndex < 0 || pageIndex >= pdfDoc.getPageCount()) {
+        console.warn(`跳过无效页码: ${item.page}`)
+        continue
+      }
+
+      const page = pdfDoc.getPage(pageIndex)
+      const pageRef = page.ref
+
+      // 创建书签引用
+      const bookmarkRef = context.nextRef()
+
+      // 创建目标数组 [page /XYZ left top zoom]
+      const dest = [pageRef, 'XYZ', null, null, null]
+
+      // 创建书签对象
+      const bookmark: any = {
+        Title: item.title,
+        Parent: outlinesRef,
+        Dest: dest
+      }
+
+      // 根据层级设置父子关系
+      if (item.level === 1) {
+        // 一级标题，父节点是根Outlines
+        bookmark.Parent = outlinesRef
+        parentStack[0] = { ref: bookmarkRef, level: 1 }
+        parentStack.length = 1
+      } else if (item.level === 2) {
+        // 二级标题，父节点是最近的一级标题
+        if (parentStack[0]) {
+          bookmark.Parent = parentStack[0].ref
+          parentStack[1] = { ref: bookmarkRef, level: 2 }
+          parentStack.length = 2
+        } else {
+          bookmark.Parent = outlinesRef
+        }
+      } else if (item.level === 3) {
+        // 三级标题，父节点是最近的二级标题
+        if (parentStack[1]) {
+          bookmark.Parent = parentStack[1].ref
+        } else if (parentStack[0]) {
+          bookmark.Parent = parentStack[0].ref
+        } else {
+          bookmark.Parent = outlinesRef
+        }
+      }
+
+      // 设置前后链接
+      if (i > 0 && bookmarkRefs.length > 0) {
+        const prevRef = bookmarkRefs[bookmarkRefs.length - 1]
+        bookmark.Prev = prevRef
+      }
+
+      if (i < tocItems.length - 1) {
+        const nextRef = context.nextRef()
+        bookmark.Next = nextRef
+      }
+
+      // 注册书签对象
+      context.assign(bookmarkRef, context.obj(bookmark))
+      bookmarkRefs.push(bookmarkRef)
+      totalCount++
+    }
+
+    // 更新根Outlines对象
+    if (bookmarkRefs.length > 0) {
+      outlines.set('First', bookmarkRefs[0])
+      outlines.set('Last', bookmarkRefs[bookmarkRefs.length - 1])
+      outlines.set('Count', totalCount)
+
+      // 注册根Outlines对象
+      context.assign(outlinesRef, outlines)
+
+      // 将Outlines添加到Catalog
+      const catalog = pdfDoc.catalog
+      catalog.set('Outlines', outlinesRef)
+    }
+
+    // 保存PDF
+    return await pdfDoc.save()
+  } catch (error) {
+    console.error('添加书签失败:', error)
+    // 如果添加书签失败，至少保存原始PDF
+    return await pdfDoc.save()
+  }
 }
 
 /**
